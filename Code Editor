@@ -1,0 +1,104 @@
+// Import required modules
+const express = require('express');
+const http = require('http');
+const WebSocket = require('ws');
+const path = require('path');
+
+// Initialize Express app and server
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+// Serve static files from the "public" directory
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Broadcast function to send data to all connected clients
+function broadcast(data) {
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(data);
+        }
+    });
+}
+
+// Handle WebSocket connections
+wss.on('connection', ws => {
+    ws.on('message', message => {
+        broadcast(message);
+    });
+
+    ws.send(JSON.stringify({ message: 'Connected to WebSocket server' }));
+});
+
+// Handle default route to serve the HTML file
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Start the server
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// Below is the HTML, CSS, and JS combined for the front-end
+
+const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Collaborative Code Editor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #282c34;
+            color: white;
+        }
+        h1 {
+            text-align: center;
+            margin-top: 20px;
+        }
+        #editor {
+            width: 90%;
+            height: 500px;
+            margin: 20px auto;
+            border-radius: 8px;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js" integrity="sha512-nmd/X1FHLBpyWYUGBN1n70EdmDQFjYffnQpPz1TE2Of1sFphKwOFoHHmwn5RR0q1gOpGYomNiSBUpK0Vf8JWFA==" crossorigin="anonymous"></script>
+</head>
+<body>
+    <h1>Real-Time Collaborative Code Editor</h1>
+    <div id="editor">function hello() { console.log("Hello, World!"); }</div>
+    <script>
+        const editor = ace.edit("editor");
+        editor.setTheme("ace/theme/monokai");
+        editor.session.setMode("ace/mode/javascript");
+
+        const socket = new WebSocket('ws://' + window.location.host);
+
+        socket.onmessage = function(event) {
+            const { code } = JSON.parse(event.data);
+            if (code && code !== editor.getValue()) {
+                editor.setValue(code, -1);
+            }
+        };
+
+        editor.on('change', function() {
+            const code = editor.getValue();
+            socket.send(JSON.stringify({ code }));
+        });
+    </script>
+</body>
+</html>
+`;
+
+const fs = require('fs');
+const publicDir = path.join(__dirname, 'public');
+if (!fs.existsSync(publicDir)){
+    fs.mkdirSync(publicDir);
+}
+fs.writeFileSync(path.join(publicDir, 'index.html'), htmlContent);
+
